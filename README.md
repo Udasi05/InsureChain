@@ -1,56 +1,54 @@
-# InsureChain — Smart Contracts + ZKP Life Insurance
+# InsureChain — Life Insurance Eligibility and DeFi Experiments
 
-This is the full student-project starter for **Smart Contracts and ZKP for Building an Efficient Life Insurance Policy Onboarding and Disbursement Process**.
+InsureChain is a student demonstration DApp with two connected learning tracks:
 
-## Included
+1. **Insurance eligibility:** a browser-generated Circom/Groth16 proof demonstrates that private example values meet public policy thresholds. The Solidity policy contract verifies the proof and records the result.
+2. **DeFi experiments:** faucet-style demo tokens flow through an ERC-4626-style vault, a simple constant-product AMM, LP-token yield farming, direct vault-share staking, and a Pair/Factory/Router DEX.
 
-- React + Vite frontend
-- Real MetaMask connection
-- Sepolia network handling
-- Policy onboarding UI
-- Circom 2.1.1 eligibility circuit
-- Groth16 setup/proving/verifying scripts using snarkjs
-- Solidity policy contract
-- Development-only mock verifier
-- Generated-verifier workflow (`snarkjs zkey export solidityverifier`)
-- Hardhat contract tests
-- Frontend hooks for real proof generation + contract verification after artifacts/deployment
-- Architecture documentation
+The insurance and DeFi demonstrations are separate contract systems. Vault shares are not insurance coverage, and the demo tokens and rewards have no real-world value. Do not use real medical, financial, or identity information.
 
-## Important: what is cryptographically real
+## Stack
 
-The circuit source and the smart-contract integration are real. The final Groth16 verifier contract is **generated from the circuit-specific zkey**, because a verifier is mathematically tied to the exact proving key. This ZIP therefore contains the complete reproducible setup rather than pretending that a generic verifier is valid for this circuit.
+- React and Vite for the interface
+- Ethers v6 and an EIP-1193 wallet provider for chain interaction
+- Solidity 0.8.20 and Hardhat for contracts and local EVM
+- Circom and snarkjs for browser-side Groth16 proving
+- The generated `Groth16Verifier.sol` corresponding to the checked-in circuit artifacts
 
-Official Circom documentation explains that Circom compiles circuits into constraint systems/WASM and that snarkjs can generate proofs, verify them and export a Solidity verifier. citeturn0search0turn0search2
+## Run locally
 
-## First setup
+See [RUN_APPLICATION.md](RUN_APPLICATION.md) for the step-by-step Windows setup. In brief:
 
-```bash
-npm install
-npm run contracts:compile
-npm run contracts:test
-npm run zkp:setup
-npm run zkp:prove
-npm run zkp:verify
+```powershell
+npm.cmd install
+npm.cmd run contracts:compile
+npx.cmd hardhat node
 ```
 
-`npm run zkp:setup` creates a local development Powers of Tau setup, creates the Groth16 zkey, exports `verification_key.json`, and generates `contracts/Groth16Verifier.sol`.
+In another terminal deploy to the local node and start Vite:
 
-For an actual public deployment, replace the local development ceremony with an appropriate trusted public ceremony/MPC contribution. The Circom/snarkjs workflow supports this model. citeturn0search2
+```powershell
+npm.cmd run deploy:local
+npm.cmd run dev
+```
 
-## Deploy
+The deploy script writes `public/deployments/<chainId>.json`, which the frontend reads. The app supports MetaMask/injected wallets and WalletConnect QR/mobile sessions. Set `VITE_WALLETCONNECT_PROJECT_ID` in `.env.local` to use WalletConnect. A phone cannot normally reach a desktop's `127.0.0.1` RPC; for local QR use a reachable LAN RPC, or use Sepolia.
 
-1. Deploy `contracts/Groth16Verifier.sol` after ZKP setup.
-2. Put its address into `VERIFIER_ADDRESS`.
-3. Deploy `LifeInsurancePolicy.sol` using that verifier address.
-4. Put the policy contract address in `.env.local` as `VITE_POLICY_CONTRACT_ADDRESS`.
-5. Copy the circuit WASM and final zkey to `public/zkp/` if you want browser-side proving.
-6. Run the frontend.
+## Contract groups
 
-## Development-only shortcut
+| Experiment | Contracts | Demonstration |
+|---|---|---|
+| Insurance core | `LifeInsurancePolicy`, `Groth16Verifier` | Private eligibility proof and on-chain activation |
+| 3 | `DemoToken`, `InsureReserveVault` | Demo asset deposit, share issue, redeem |
+| 4 | `SimpleAMM` | Constant-product pool, swaps, LP shares |
+| 5A | `SimpleYieldFarm` | Stake SimpleAMM LP shares for funded RWD rewards |
+| 5B | `SimpleStaking` | Stake vault shares in a separate reward flow |
+| 6 | `InsureDexPair`, `InsureDexFactory`, `InsureDexRouter` | Pair-based liquidity and routed swaps |
 
-`MockZKPVerifier.sol` accepts any proof and is only for testing the policy transaction flow. **Never use it for the final demonstration of cryptographic verification.**
+## Proof artifact consistency
 
-## Privacy
+The browser WASM and final zkey in `public/zkp/` must match the circuit and Solidity verifier. If the circuit changes, regenerate the setup and replace the browser artifacts and verifier together before redeploying. Local development setup is not a production trusted ceremony.
 
-Do not store raw medical records, financial records, death certificates, or other sensitive records on a public blockchain. The intended design is to prove a predicate about private data and reveal only the public signals required by the policy.
+## Scope note
+
+Policy activation is an eligibility demonstration only. The contracts do not collect insurance premiums, issue a regulated policy, authenticate external medical/financial records, adjudicate death claims, or make insurance payouts. DeFi rewards are funded demonstration schedules, not investment promises.

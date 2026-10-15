@@ -4,6 +4,6 @@ cache
 artifacts
 .env
 .env.local
+public/deployments/*.json
 .DS_Store
-zkp/build/*
-!zkp/build/.gitkeep
+zkp/build/

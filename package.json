@@ -8,15 +8,15 @@
     "build": "vite build",
     "preview": "vite preview",
     "contracts:compile": "hardhat compile",
-    "contracts:test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.cjs --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.cjs --network sepolia",
     "zkp:compile": "node scripts/zkp/compile.mjs",
     "zkp:setup": "node scripts/zkp/setup.mjs",
     "zkp:prove": "node scripts/zkp/prove.mjs",
-    "zkp:verify": "node scripts/zkp/verify.mjs",
-    "zkp:calldata": "node scripts/zkp/calldata.mjs",
-    "zkp:all": "node scripts/zkp/setup.mjs"
+    "zkp:verify": "node scripts/zkp/verify.mjs"
   },
   "dependencies": {
+    "@walletconnect/ethereum-provider": "^2.21.1",
     "ethers": "^6.15.0",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
@@ -25,11 +25,10 @@
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
-    "chai": "^4.5.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "circom2": "^0.2.23",
     "circomlib": "^2.0.5",
     "hardhat": "^2.26.3",
-    "vite": "^6.0.7",
-    "@vitejs/plugin-react": "^4.3.4"
+    "vite": "^6.0.7"
   }
 }

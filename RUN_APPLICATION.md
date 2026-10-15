@@ -1,140 +1,85 @@
-# Run InsureChain Locally (Windows)
+# Run InsureChain locally (Windows)
 
-This guide runs the React frontend, Express/MongoDB authentication backend, and a local Hardhat blockchain. It assumes PowerShell and that dependencies are installed from the project root.
+## Prerequisites
 
-## What runs
+- Node.js LTS and npm
+- MetaMask (or another EIP-1193 injected EVM wallet)
+- WalletConnect Cloud project ID (only if demonstrating QR/mobile wallet connection)
+- PowerShell
 
-| Part            | Purpose                              | Local address                              |
-| --------------- | ------------------------------------ | ------------------------------------------ |
-| Vite frontend   | Website and wallet interface         | `http://localhost:5173`                    |
-| Express backend | Register/login API                   | `http://localhost:3000`                    |
-| MongoDB         | Stores account records               | `mongodb://127.0.0.1:27017/life_insurance` |
-| Hardhat node    | Local EVM for contracts and MetaMask | `http://127.0.0.1:8545`                    |
+MongoDB and the Express authentication server are no longer part of this project. The DApp uses the connected wallet as the actor identity.
 
-## 1. Prerequisites
+## Install and compile
 
-- Install Node.js LTS.
-- Install and start MongoDB Community Server, or run another MongoDB instance and use its connection string below.
-- Install MetaMask in your browser.
-
-The local MongoDB service must be running before starting the backend. The example connection string points to a MongoDB server on this computer.
-
-## 2. Install packages
-
-Open PowerShell in the project root (`D:\Projects\life-insurance-blockchain`) and run:
+From the repository root:
 
 ```powershell
 npm.cmd install
-npm.cmd install --prefix backend
-```
-
-`npm.cmd` avoids PowerShell's script execution policy issue with `npm.ps1`.
-
-## 3. Configure the backend
-
-Create or update `backend/.env` with:
-
-```env
-MONGO_URI=mongodb://127.0.0.1:27017/life_insurance
-JWT_SECRET=replace-this-with-a-long-random-local-secret
-PORT=3000
-```
-
-Keep this file local; do not commit it. `PORT` is optional because the backend defaults to port 3000. `JWT_SECRET` must be set for login to issue a token.
-
-## 4. Compile the contracts
-
-From the project root:
-
-```powershell
 npm.cmd run contracts:compile
 ```
 
-The repository includes `contracts/Groth16Verifier.sol` and browser proving files under `public/zkp/`, so the initial local run does not require generating a new ZKP setup.
+## Start the local chain
 
-## 5. Start the Hardhat local blockchain
-
-Open a second PowerShell window in the project root and run:
+In a separate terminal, leave the local Hardhat node running:
 
 ```powershell
 npx.cmd hardhat node
 ```
 
-Leave this window running. Hardhat prints local test accounts and their private keys. These accounts have local test ETH and are only for development.
+Add a custom network to MetaMask:
 
-## 6. Deploy the contracts locally
+| Setting | Value |
+|---|---|
+| Network name | InsureChain Local |
+| RPC URL | `http://127.0.0.1:8545` |
+| Chain ID | `31337` |
+| Currency | ETH |
 
-Open a third PowerShell window in the project root and run:
+Import one of the accounts printed by Hardhat. These accounts are for the local chain only.
 
-```powershell
-npx.cmd hardhat run scripts/deploy.cjs --network localhost
-```
+For WalletConnect, add `VITE_WALLETCONNECT_PROJECT_ID=your_project_id` to `.env.local` and restart Vite. Mobile wallets need to reach the configured RPC. A phone's `127.0.0.1` is the phone itself, so use a reachable development LAN RPC or configure Sepolia instead of the local RPC for QR demonstrations.
 
-The local `localhost` Hardhat network is configured in `hardhat.config.cjs`. The command prints the verifier and policy contract addresses. Copy the **LifeInsurancePolicy** address.
+## Deploy the experiment contracts
 
-Create or update `.env.local` in the project root:
-
-```env
-VITE_POLICY_CONTRACT_ADDRESS=PASTE_THE_LIFE_INSURANCE_POLICY_ADDRESS_HERE
-```
-
-Restart the Vite server whenever you change `.env.local`; Vite reads these variables when it starts.
-
-## 7. Add the local chain to MetaMask
-
-In MetaMask, open the network selector, select **Add network** and then **Add a custom network**. Use:
-
-| Field              | Value                   |
-| ------------------ | ----------------------- |
-| Network name       | `InsureChain Local`     |
-| RPC URL            | `http://127.0.0.1:8545` |
-| Chain ID           | `31337`                 |
-| Currency symbol    | `ETH`                   |
-| Block explorer URL | Leave blank             |
-
-Save and switch to this network. Then import one of the local test accounts shown by `hardhat node`: in MetaMask, choose **Add account** → **Import account**, and paste that account's private key. Use these predictable test keys only on the local chain. Never use them for real funds or import your real wallet's recovery phrase into a development tool.
-
-## 8. Start the backend
-
-Open another PowerShell window in the project root and run:
+In a third terminal:
 
 ```powershell
-Set-Location backend
-node server.js
+npm.cmd run deploy:local
 ```
 
-Keep it running. Starting from `backend` makes `dotenv` load `backend/.env`. On success, the terminal should report MongoDB connected and the server listening on port 3000.
+The script deploys the proof verifier and policy contract, demo tokens, vault, Experiment 4 AMM, Experiment 6 factory/router, and both Experiment 5 reward contracts. It funds the reward schedules and writes their addresses to `public/deployments/31337.json`.
 
-## 9. Start the frontend
+The local node is in-memory. If it stops, restart it and redeploy; the new node has no previous contract state.
 
-Open another PowerShell window in the project root and run:
+### Optional Sepolia deployment
+
+Set `SEPOLIA_RPC_URL` and `SEPOLIA_PRIVATE_KEY` in the shell environment, then run `npm.cmd run deploy:sepolia`. Keep the key private and fund that account with Sepolia test ETH. Configure Vite with `VITE_CHAIN_ID=11155111`, a public `VITE_RPC_URL`, and the WalletConnect project ID before starting the frontend.
+
+## Start the frontend
 
 ```powershell
 npm.cmd run dev
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`). Register a local test account, sign in, connect the imported MetaMask account, and proceed from the dashboard into policy onboarding.
+Open the Vite URL, connect MetaMask or WalletConnect, and use the experiment navigation. The demo USDC faucet can mint up to 1,000 tokens per call to any connected wallet.
 
-## Start order quick reference
+### Insurance proof flow
 
-For a normal session, keep these running in separate terminals:
+The default values satisfy the example thresholds. The browser generates a Groth16 proof from `public/zkp/LifeInsuranceEligibility.wasm` and `public/zkp/LifeInsuranceEligibility_final.zkey`, creates a pending policy, then submits the proof. Only public thresholds and proof data go to the contract. The inputs in the form are demonstration data, not verified external records.
 
-1. MongoDB service
-2. `npx.cmd hardhat node`
-3. `node backend/server.js`
-4. `npm.cmd run dev`
+### DeFi flow
 
-Deploy the contracts after starting Hardhat when the node has restarted or no deployment exists on its current chain state. A local Hardhat node is in-memory: stopping it clears its deployed contracts and test chain state. Redeploy, then update `VITE_POLICY_CONTRACT_ADDRESS` if the address changes.
+1. Mint demo USDC.
+2. Deposit it into the vault to receive vINS shares.
+3. Add demo USDC and vINS liquidity to the simple AMM or DEX pair.
+4. Stake SimpleAMM LP shares in the yield farm, or stake vINS in the separate direct-staking contract.
+5. Claim rewards or exit the position.
 
-## ZKP signal layout and local artifacts
+The DEX swap screen demonstrates the router's two-token path. The router contract accepts multi-hop token paths; a multi-hop UI selector is not yet exposed.
 
-The circuit exposes four public signals (`eligible` plus the three thresholds). The policy, verifier interface, and frontend pass all four signals in that order. Recompile and redeploy the contracts after pulling code changes so the local deployment uses the current ABI.
+## ZKP setup (only after circuit changes)
 
-The onboarding form uses demonstration values. The current backend stores Aadhaar numbers as plain strings and hashes only the date of birth; use test data locally, not real identity or health/financial information.
-
-## Optional: regenerate ZKP artifacts
-
-Only do this if you intentionally change the circuit or need fresh prover/verifier artifacts. Install the native Circom CLI first. The setup script creates a development proving setup and can take a while:
+Install the native Circom CLI, then run:
 
 ```powershell
 npm.cmd run zkp:setup
@@ -142,4 +87,4 @@ npm.cmd run zkp:prove
 npm.cmd run zkp:verify
 ```
 
-After setup, copy the generated `zkp/build/LifeInsuranceEligibility_js/LifeInsuranceEligibility.wasm` and `zkp/build/LifeInsuranceEligibility_final.zkey` into `public/zkp/` so the browser can use the matching artifacts, and redeploy the updated contracts. A local setup is for development/demo use, not production cryptographic assurances.
+Copy the generated matching WASM and final zkey into `public/zkp/`, then recompile and redeploy. A local setup is for teaching and development, not production use.

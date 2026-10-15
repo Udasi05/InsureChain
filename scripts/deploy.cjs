@@ -1,25 +1,63 @@
+const fs = require("node:fs");
+const path = require("node:path");
 const hre = require("hardhat");
+
+async function deploy(name, ...args) {
+  const factory = await hre.ethers.getContractFactory(name);
+  const contract = await factory.deploy(...args);
+  await contract.waitForDeployment();
+  const address = await contract.getAddress();
+  console.log(`${name}: ${address}`);
+  return contract;
+}
 
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
-  console.log("Deploying contracts with the account:", deployer.address);
+  const chain = await hre.ethers.provider.getNetwork();
+  const parse = hre.ethers.parseEther;
+  console.log(`Deploying InsureChain experiment contracts on chain ${chain.chainId} with ${deployer.address}`);
 
-  // 1. Deploy the Groth16Verifier contract generated during setup
-  console.log("Deploying Groth16Verifier...");
-  const Verifier = await hre.ethers.getContractFactory("Groth16Verifier");
-  const verifier = await Verifier.deploy();
-  await verifier.waitForDeployment();
-  const verifierAddress = await verifier.getAddress();
-  console.log("Groth16Verifier deployed to:", verifierAddress);
+  const verifier = await deploy("Groth16Verifier");
+  const policy = await deploy("LifeInsurancePolicy", await verifier.getAddress());
+  const mockUSDC = await deploy("DemoToken", "Demo USDC", "mUSDC", parse("10000000"), true);
+  const rewardToken = await deploy("DemoToken", "Insure Reward", "RWD", parse("1000000"), false);
+  const vaultShares = await deploy("InsureReserveVault", await mockUSDC.getAddress());
+  const simpleAMM = await deploy("SimpleAMM", await mockUSDC.getAddress(), await vaultShares.getAddress());
+  const dexFactory = await deploy("InsureDexFactory");
+  const dexRouter = await deploy("InsureDexRouter", await dexFactory.getAddress(), hre.ethers.ZeroAddress);
+  const yieldFarm = await deploy("SimpleYieldFarm", await simpleAMM.getAddress(), await rewardToken.getAddress());
+  const staking = await deploy("SimpleStaking", await vaultShares.getAddress(), await rewardToken.getAddress());
 
-  // 2. Deploy the LifeInsurancePolicy contract using the deployed verifier address
-  console.log("Deploying LifeInsurancePolicy...");
-  const LifeInsurancePolicy = await hre.ethers.getContractFactory("LifeInsurancePolicy");
-  const policy = await LifeInsurancePolicy.deploy(verifierAddress);
-  await policy.waitForDeployment();
-  const policyAddress = await policy.getAddress();
+  const rewardPerPool = parse("100000");
+  const rewardPeriod = 365 * 24 * 60 * 60;
+  await (await rewardToken.approve(await yieldFarm.getAddress(), rewardPerPool)).wait();
+  await (await yieldFarm.fundRewards(rewardPerPool, rewardPeriod)).wait();
+  await (await rewardToken.approve(await staking.getAddress(), rewardPerPool)).wait();
+  await (await staking.fundRewards(rewardPerPool, rewardPeriod)).wait();
 
-  console.log("LifeInsurancePolicy deployed to:", policyAddress);
+  const registry = {
+    chainId: chain.chainId.toString(),
+    deployer: deployer.address,
+    verifier: await verifier.getAddress(),
+    policy: await policy.getAddress(),
+    mockUSDC: await mockUSDC.getAddress(),
+    rewardToken: await rewardToken.getAddress(),
+    vaultShares: await vaultShares.getAddress(),
+    simpleAMM: await simpleAMM.getAddress(),
+    dexFactory: await dexFactory.getAddress(),
+    dexRouter: await dexRouter.getAddress(),
+    yieldFarm: await yieldFarm.getAddress(),
+    staking: await staking.getAddress(),
+  };
+  const registryDirectory = path.join(__dirname, "..", "public", "deployments");
+  fs.mkdirSync(registryDirectory, { recursive: true });
+  const registryPath = path.join(registryDirectory, `${chain.chainId}.json`);
+  fs.writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+  console.log(`Deployment registry written to ${registryPath}`);
+
+  // Node 24 on Windows can assert in libuv if Hardhat exits immediately after
+  // completing async RPC/file work. Let pending native handles settle first.
+  await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
 main().catch((error) => {
