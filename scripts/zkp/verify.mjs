@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import snarkjs from "snarkjs";
+import * as snarkjs from "snarkjs";
 
 const root = process.cwd();
 const build = path.join(root, "zkp", "build");

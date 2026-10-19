@@ -5,5 +5,7 @@ artifacts
 .env
 .env.local
 public/deployments/*.json
+backend/data/*.json
+backend/data/*.tmp
 .DS_Store
 zkp/build/

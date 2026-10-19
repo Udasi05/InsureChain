@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import snarkjs from "snarkjs";
+import * as snarkjs from "snarkjs";
 
 const root = process.cwd();
 const inputPath = process.argv[2] || "circuits/input.example.json";

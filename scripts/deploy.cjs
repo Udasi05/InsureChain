@@ -14,14 +14,22 @@ async function deploy(name, ...args) {
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   const chain = await hre.ethers.provider.getNetwork();
+  const deploymentBlock = await hre.ethers.provider.getBlockNumber();
   const parse = hre.ethers.parseEther;
-  console.log(`Deploying InsureChain experiment contracts on chain ${chain.chainId} with ${deployer.address}`);
+  console.log(`Deploying InsureChain insurance and DeFi contracts on chain ${chain.chainId} with ${deployer.address}`);
 
   const verifier = await deploy("Groth16Verifier");
-  const policy = await deploy("LifeInsurancePolicy", await verifier.getAddress());
   const mockUSDC = await deploy("DemoToken", "Demo USDC", "mUSDC", parse("10000000"), true);
   const rewardToken = await deploy("DemoToken", "Insure Reward", "RWD", parse("1000000"), false);
   const vaultShares = await deploy("InsureReserveVault", await mockUSDC.getAddress());
+  const policy = await deploy("LifeInsurancePolicy", await verifier.getAddress(), await mockUSDC.getAddress(), await vaultShares.getAddress());
+
+  // Seed the shared insurance reserve with demo capital so the claim-review
+  // lifecycle can be demonstrated before a large premium pool has accumulated.
+  const initialInsuranceReserve = parse("100000");
+  await (await mockUSDC.approve(await vaultShares.getAddress(), initialInsuranceReserve)).wait();
+  await (await vaultShares.deposit(initialInsuranceReserve, await policy.getAddress())).wait();
+
   const simpleAMM = await deploy("SimpleAMM", await mockUSDC.getAddress(), await vaultShares.getAddress());
   const dexFactory = await deploy("InsureDexFactory");
   const dexRouter = await deploy("InsureDexRouter", await dexFactory.getAddress(), hre.ethers.ZeroAddress);
@@ -37,6 +45,7 @@ async function main() {
 
   const registry = {
     chainId: chain.chainId.toString(),
+    deploymentBlock,
     deployer: deployer.address,
     verifier: await verifier.getAddress(),
     policy: await policy.getAddress(),

@@ -1,16 +1,24 @@
-# InsureChain contracts
+# InsureChain contract map
 
-## Insurance eligibility
+## Insurance lifecycle
 
-- `LifeInsurancePolicy.sol` owns the pending-to-active eligibility record flow.
-- `IZKPVerifier.sol` is the generated verifier interface.
-- `Groth16Verifier.sol` is generated from the circuit's matching proving setup. Keep it matched to the browser WASM and final zkey.
+- `LifeInsurancePolicy.sol` stores public policy terms and enforces the application → proof verified → premium paid → active → claim review → benefit paid/declined flow.
+- `Groth16Verifier.sol` verifies the generated proof; `IZKPVerifier.sol` is the policy contract's interface.
+- `LifeInsurancePolicy` takes demo USDC premiums and deposits them into `InsureReserveVault`, holding the minted vINS shares. The deployment seeds additional demo reserve shares so benefit payment can be demonstrated.
+- The deployment account is the claims administrator. It can approve or decline requests from other policyholders, but it cannot review its own policy.
 
-## Experiment contracts
+## DeFi tools
 
-- Experiment 3: `DemoToken.sol` and `InsureReserveVault.sol` provide the mock asset and ERC-4626-style share lifecycle.
-- Experiment 4: `SimpleAMM.sol` shows constant-product swaps and a transferable LP-share ledger.
-- Experiment 5: `SimpleYieldFarm.sol` stakes the Experiment 4 LP shares; `SimpleStaking.sol` directly stakes vINS. Both accrue a funded reward token over time.
-- Experiment 6: `InsureDexFactory.sol` creates `InsureDexPair.sol` pools; `InsureDexRouter.sol` offers liquidity and token-path swaps with a 0.30% fee, deadline, and minimum output.
+- `DemoToken.sol` provides demo USDC and RWD.
+- `InsureReserveVault.sol` implements the ERC-4626-style deposit, mint, withdraw, redeem, and share conversion lifecycle.
+- `SimpleAMM.sol` provides personal demo token swaps and transferable LP shares.
+- `SimpleYieldFarm.sol` stakes AMM LP shares for funded RWD rewards; `SimpleStaking.sol` separately stakes personal vINS.
+- `InsureDexPair.sol`, `InsureDexFactory.sol`, and `InsureDexRouter.sol` provide factory-created pairs, liquidity, and routed swaps.
 
-These contracts are classroom implementations. They have not been audited and must not be used with real assets.
+## Deployment
+
+`scripts/deploy.cjs` deploys the verifier, demo tokens, reserve vault, and insurance policy in dependency order. It funds the vault with 100,000 demo USDC in policy-owned shares, deploys the DeFi contracts, funds reward schedules, and writes a chain-specific registry to `public/deployments/`.
+
+Changing the insurance contract constructor requires a fresh deployment. Local Hardhat networks are in-memory; restart the node and redeploy to get a clean state.
+
+These contracts are classroom code, unaudited, and not suitable for real insurance or financial assets. The proof is only about user-entered demo values; claim review is an administrator-controlled simulation.

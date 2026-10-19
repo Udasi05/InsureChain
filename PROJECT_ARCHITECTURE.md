@@ -1,69 +1,78 @@
-# InsureChain project design sheet
+# InsureChain architecture
 
-## Goal and actors
+## Product intent
 
-InsureChain demonstrates two related subjects: privacy-preserving life-insurance eligibility and DeFi contract mechanics. The user connects an EVM wallet. A local Hardhat deployer seeds the demo reward schedules. No insurer, bank, oracle, or external identity provider is integrated.
+InsureChain is a student life-insurance DApp with an end-to-end, on-chain demonstration lifecycle. Privacy-preserving eligibility connects to a premium-funded policy; the premium becomes shares in a shared ERC-4626 reserve; a separate deployment account reviews demo benefits paid from policy-owned reserve shares. DeFi pages let users explore personal demo assets and shares that use the same token and vault system.
 
-## System layout
+This is a prototype, not a real insurer. The application has no trusted underwriting input, identity service, real claims evidence verification, or financial value.
+
+## System map
 
 ```mermaid
 flowchart LR
-  U[User] --> UI[React + Vite]
-  UI --> W[Injected EIP-1193 wallet]
+  U[Applicant] --> UI[React + Ethers DApp]
+  UI --> W[Wallet]
   W --> EVM[Hardhat local EVM]
-  UI -->|private example inputs| P[Browser snarkjs prover]
+  UI -->|sample private inputs| P[Browser Circom / snarkjs]
   P -->|proof + public thresholds| LI[LifeInsurancePolicy]
   LI --> V[Groth16Verifier]
-  UI --> T[Demo USDC + RWD]
-  T --> VAULT[ERC-4626-style vINS vault]
-  T --> AMM[Experiment 4 SimpleAMM]
-  VAULT --> AMM
-  AMM --> FARM[Experiment 5 LP Yield Farm]
-  VAULT --> STAKE[Experiment 5 Direct Staking]
-  T --> DEX[Experiment 6 Pair / Factory / Router]
-  VAULT --> DEX
+  U -->|demo premium approval| LI
+  LI -->|premium USDC deposit| RV[InsureReserveVault]
+  RV -->|vINS shares held by policy| LI
+  A[Claims administrator] -->|review request| LI
+  LI -->|approved demo benefit| B[Recorded beneficiary]
+  U -->|personal demo assets| RV
+  U -->|personal USDC + vINS| AMM[SimpleAMM / DEX]
+  AMM --> FARM[LP Yield Farm]
+  RV --> STAKE[Personal vINS Staking]
+  UI --> API[Wallet-signed history API]
+  API -->|read recognized logs| EVM
 ```
 
-## Experiment mapping
+## Insurance lifecycle
 
-| Reference experiment | Project feature | Main contracts/UI |
-|---|---|---|
-| 1: React/Ethers DApp | Wallet DApp structure | `src/App.jsx`, Ethers v6 |
-| 2: WalletConnect and MetaMask | Wallet selection | `src/App.jsx` supports injected EIP-1193 providers and WalletConnect QR/mobile sessions |
-| Design sheet | Actors, data, architecture | This document |
-| 3: ERC-4626 | Reserve demo vault | `DemoToken`, `InsureReserveVault` |
-| 4: LP and AMM | Simple pool milestone | `SimpleAMM` |
-| 5: Yield farming | LP reward stream | `SimpleYieldFarm` |
-| 5: Staking | Direct vINS reward stream | `SimpleStaking` |
-| 6: DEX | Factory-created pair and router | `InsureDexPair`, `InsureDexFactory`, `InsureDexRouter` |
+1. The applicant sets sample income, credit score, risk, benefit, premium, and beneficiary. The beneficiary defaults to the applicant.
+2. The browser generates the Groth16 proof. The form's private witness is not sent to the backend or included in policy storage. Public thresholds, premium, coverage, and beneficiary are on-chain.
+3. `LifeInsurancePolicy` creates a `Pending` application. A valid proof moves it to `Verified`.
+4. The applicant approves the premium token for the policy contract. `purchasePolicy` takes the premium, deposits it into `InsureReserveVault`, holds the minted vINS shares, sets a one-year expiry, and moves the policy to `Active`.
+5. The policyholder can submit one unresolved demo benefit request up to the policy coverage while the policy is active. Only a reference hash is stored. The policy moves to `ClaimPending`.
+6. `claimsAdmin` is the deployment account. It cannot review a claim on its own policy. Approval checks that policy-owned reserve shares can cover the amount, withdraws the amount from the vault, pays the recorded beneficiary, and sets `ClaimPaid`. Declining returns an unexpired policy to `Active`.
+7. `policyStatus` reports `Expired` after the term even if the stored policy status has not been changed by a transaction.
 
-## Insurance data flow
+The deployment seeds 100,000 demo USDC into the vault with the resulting shares owned by the policy contract. This reserve seed lets the claim path be shown before premiums accumulate. It is demo capital, not actuarial backing.
 
-The form contains private example values (income, credit score, medical risk) and public thresholds. `generateEligibilityProof` runs Groth16 proving in the browser. The public signals are ordered as `[eligible, minIncome, minCreditScore, maxMedicalRisk]`. The frontend creates a policy record and submits the proof. `LifeInsurancePolicy` checks holder, pending status, eligibility, and exact threshold matches before calling the generated verifier. A valid proof activates the record.
+### Status values
 
-The circuit does not authenticate the origin or accuracy of entered values. Real underwriting requires an appropriately trusted data source and reviewed circuit logic. The application must not collect real sensitive data for this demo.
+| Value | State | Meaning |
+|---:|---|---|
+| 0 | None | Unused policy identifier |
+| 1 | Pending | Application created; proof not verified |
+| 2 | Verified | Proof valid; premium is due |
+| 3 | Active | Premium deposited; policy term in force |
+| 4 | ClaimPending | A benefit request awaits admin review |
+| 5 | ClaimPaid | Benefit paid to the recorded beneficiary |
+| 6 | Expired | The one-year term has ended |
+| 7 | Rejected | Reserved for rejected policy state |
 
-## DeFi data flow
+## DeFi connection
 
-- `DemoToken` is a faucet-style ERC-20-like token used for demo USDC and RWD.
-- `InsureReserveVault` takes demo USDC and mints vINS shares. It holds the underlying without a strategy or return guarantee.
-- `SimpleAMM` is the Experiment 4 pool and exposes LP shares for users and the yield farm.
-- `SimpleYieldFarm` stakes SimpleAMM LP shares. `SimpleStaking` separately stakes vINS.
-- The Experiment 6 factory creates one pair per token pair. The pair stores reserves, LP ownership, swap invariant, and a 0.30% fee. The router handles liquidity and swaps with deadline/minimum-output checks.
+- `InsureReserveVault` is shared: applicant premiums are deposited by the policy contract and corresponding vINS shares are held by that contract; personal deposits mint shares to the user's wallet.
+- The `SimpleAMM`, DEX, farm, and direct staking use personal demo balances. Their contracts cannot transfer policy-owned vINS shares, so those actions do not alter insurance reserve backing.
+- The deployment seeds funded RWD schedules for farm and staking. Rewards are not policy benefits, premium discounts, or guaranteed investment returns.
 
-Reward schedules are funded at deployment from the local RWD supply. Rewards are not guaranteed beyond funded contract balances. These demo contracts are educational and are not audited or suitable for real assets.
+## Other services and data
 
-## On-chain and off-chain boundary
-
-| Data | Location |
+| Component | Responsibility |
 |---|---|
-| Proof inputs | Browser form / browser prover only |
-| Eligibility thresholds and proof | Policy transaction calldata and policy record |
-| Wallet identity | Connected account address |
-| Demo token balances, reserves, shares, stakes, rewards | Local-chain contract state |
-| Contract addresses | `public/deployments/<chainId>.json` |
-| Proving WASM and zkey | `public/zkp/` static assets |
+| React/Vite | Application flow, wallet UI, proof generation, contract reads and writes |
+| Ethers v6 | EIP-1193 wallet integration and ABI calls |
+| Hardhat | Local EVM, compilation, deployment, deterministic demo contracts |
+| Circom/snarkjs | Eligibility circuit and in-browser Groth16 proving |
+| History backend | Verify a signed wallet challenge; index recognized public contract events for that wallet |
+| `public/deployments/<chainId>.json` | Addresses, deployer/claims-admin, deployment block |
 
-## Deliberate exclusions
+The history backend does not receive the raw eligibility witness or claim-reference text. It indexes public logs, not every transaction on the chain. Browser session history access is held in memory and cleared on wallet/account/network changes.
 
-The project excludes Aadhaar/DOB web login and database storage, simulated insurer/provider listings, insurer terms acceptance metadata, live insurance purchases, premium collection, claims adjudication, death records, and payouts. They are outside the supplied experiments and could misrepresent this prototype's capabilities.
+## Limitations
+
+The circuit checks values typed into a demo form; it does not authenticate identity or the source and accuracy of underwriting data. A claim reference hash is not evidence validation, and the deployment account is a centralized demo reviewer. The reserve, contracts, DeFi pages, and test assets are educational, unaudited, and unsuitable for real financial or insurance use. Never enter real medical, identity, or financial information.
